@@ -72,17 +72,26 @@ export function Contact() {
       return;
     }
 
-    // Simulate sending message
-    toast.success("Your message has been sent!");
+    // Send message to backend
+    const sendMessage = async () => {
+      try {
+        await apiService.submitContactMessage(formData);
+        toast.success("Your message has been sent!");
+        
+        // Reset form
+        setFormData({
+          name: "",
+          email: "",
+          subject: "",
+          message: "",
+          category: "",
+        });
+      } catch (error) {
+        toast.error("Failed to send message. Please try again.");
+      }
+    };
 
-    // Reset form
-    setFormData({
-      name: "",
-      email: "",
-      subject: "",
-      message: "",
-      category: "",
-    });
+    sendMessage();
   };
 
   const handleInputChange = (e) => {

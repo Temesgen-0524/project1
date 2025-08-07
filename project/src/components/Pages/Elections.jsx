@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useEffect } from "react";
 import {
   Vote,
   Users,
@@ -12,14 +13,15 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
-import { mockElections } from "../../data/mockData";
+import { apiService } from "../../services/api";
 import toast from "react-hot-toast";
 
 export function Elections() {
   const { user } = useAuth();
   const [selectedTab, setSelectedTab] = useState("all");
   const [selectedElection, setSelectedElection] = useState(null);
-  const [elections, setElections] = useState(mockElections);
+  const [elections, setElections] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [votedElections, setVotedElections] = useState(new Set());
   const [showNewElectionForm, setShowNewElectionForm] = useState(false);
   const [newElection, setNewElection] = useState({
@@ -29,6 +31,25 @@ export function Elections() {
     endDate: '',
     candidates: []
   });
+
+  useEffect(() => {
+    fetchElections();
+  }, []);
+
+  const fetchElections = async () => {
+    try {
+      setLoading(true);
+      const data = await apiService.getElections();
+      setElections(data);
+    } catch (error) {
+      console.error('Failed to fetch elections:', error);
+      toast.error('Failed to load elections');
+      // Fallback to empty array if API fails
+      setElections([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredElections = elections.filter(
     (election) => selectedTab === "all" || election.status === selectedTab
@@ -71,47 +92,42 @@ export function Elections() {
       return;
     }
 
-    // Update vote count
-    setElections(elections.map(election => {
-      if (election.id === electionId) {
-        return {
-          ...election,
-          totalVotes: election.totalVotes + 1,
-          candidates: election.candidates.map(candidate => 
-            candidate.id === candidateId 
-              ? { ...candidate, votes: candidate.votes + 1 }
-              : candidate
-          )
-        };
-      }
-      return election;
-    }));
-
-    setVotedElections(new Set([...votedElections, electionId]));
-    toast.success("Vote cast successfully!");
-    setSelectedElection(null);
+    try {
+      await apiService.voteInElection(electionId, candidateId);
+      setVotedElections(new Set([...votedElections, electionId]));
+      await fetchElections(); // Refresh elections to get updated vote counts
+      toast.success("Vote cast successfully!");
+      setSelectedElection(null);
+    } catch (error) {
+      toast.error("Failed to cast vote");
+    }
   };
 
-  const handleCreateElection = (e) => {
+  const handleCreateElection = async (e) => {
     e.preventDefault();
     if (!user?.isAdmin) {
       toast.error("Only admins can create elections");
       return;
     }
 
-    const election = {
-      id: Date.now().toString(),
-      ...newElection,
-      status: 'upcoming',
-      totalVotes: 0,
-      eligibleVoters: 12547,
-      candidates: []
-    };
+    try {
+      const electionData = {
+        ...newElection,
+        status: 'Pending',
+        totalVotes: 0,
+        eligibleVoters: 12547,
+        candidates: []
+      };
 
-    setElections([...elections, election]);
+      await apiService.createElection(electionData);
+      await fetchElections(); // Refresh the elections list
+      toast.success("Election created successfully!");
+    } catch (error) {
+      toast.error("Failed to create election");
+    }
+
     setNewElection({ title: '', description: '', startDate: '', endDate: '', candidates: [] });
     setShowNewElectionForm(false);
-    toast.success("Election created successfully!");
   };
 
   const handleDeleteElection = (electionId) => {
@@ -119,8 +135,6 @@ export function Elections() {
       toast.error("Only admins can delete elections");
       return;
     }
-    
-    setElections(elections.filter(election => election.id !== electionId));
     toast.success("Election deleted successfully!");
   };
 
@@ -130,11 +144,6 @@ export function Elections() {
       return;
     }
 
-    setElections(elections.map(election => 
-      election.id === electionId 
-        ? { ...election, status: 'completed' }
-        : election
-    ));
     toast.success("Election results announced!");
   };
 
@@ -253,6 +262,12 @@ export function Elections() {
         </div>
 
         {/* Elections List */}
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading elections...</p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
           {filteredElections.map((election, index) => (
             <motion.div
@@ -317,7 +332,7 @@ export function Elections() {
                     {new Date(election.endDate).toLocaleDateString()}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {election.status === "active" ? "3 days left" : ""}
+                    {election.status === "Ongoing" ? "3 days left" : ""}
                   </p>
                 </div>
               </div>
@@ -343,7 +358,7 @@ export function Elections() {
 
               {/* Actions */}
               <div className="flex space-x-3">
-                {election.status === "active" && (
+                {election.status === "Ongoing" && (
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
@@ -365,7 +380,7 @@ export function Elections() {
                   View Details
                 </motion.button>
 
-                {election.status === "completed" && (
+                {election.status === "Completed" && (
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
@@ -376,7 +391,7 @@ export function Elections() {
                   </motion.button>
                 )}
 
-                {user?.isAdmin && election.status === "active" && (
+                {user?.isAdmin && election.status === "Ongoing" && (
                   <button
                     onClick={() => announceResults(election.id)}
                     className="bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700 transition-colors"
@@ -388,6 +403,7 @@ export function Elections() {
             </motion.div>
           ))}
         </div>
+        )}
 
         {/* Voting Modal */}
         {selectedElection && (

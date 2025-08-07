@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useEffect } from "react";
 import {
   MessageSquare,
   Plus,
@@ -11,7 +12,8 @@ import {
   Upload,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { mockComplaints, generateCaseId } from "../../data/mockData";
+import { generateCaseId } from "../../data/mockData";
+import { apiService } from "../../services/api";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 
@@ -24,7 +26,8 @@ export function Complaints() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [responseMessage, setResponseMessage] = useState("");
-  const [complaints, setComplaints] = useState(mockComplaints);
+  const [complaints, setComplaints] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showDocumentUpload, setShowDocumentUpload] = useState(false);
   const [documentFile, setDocumentFile] = useState(null);
 
@@ -45,6 +48,25 @@ export function Complaints() {
     { value: "general", label: "General" },
   ];
 
+  useEffect(() => {
+    fetchComplaints();
+  }, []);
+
+  const fetchComplaints = async () => {
+    try {
+      setLoading(true);
+      const data = await apiService.getComplaints();
+      setComplaints(data);
+    } catch (error) {
+      console.error('Failed to fetch complaints:', error);
+      toast.error('Failed to load complaints');
+      // Fallback to empty array if API fails
+      setComplaints([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredComplaints = complaints.filter((complaint) => {
     const matchesSearch =
       complaint.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -58,7 +80,7 @@ export function Complaints() {
     return matchesSearch && matchesStatus && matchesTab;
   });
 
-  const handleSubmitComplaint = (e) => {
+  const handleSubmitComplaint = async (e) => {
     e.preventDefault();
     if (!newComplaintForm.title || !newComplaintForm.description) {
       toast.error("Please fill all required fields");
@@ -66,17 +88,20 @@ export function Complaints() {
     }
 
     const caseId = generateCaseId();
-    const newComplaint = {
-      id: `comp_${Date.now()}`,
-      ...newComplaintForm,
-      submittedBy: user?.id,
-      submittedAt: new Date(),
-      status: "submitted",
-      responses: []
-    };
+    try {
+      const complaintData = {
+        ...newComplaintForm,
+        submittedBy: user?.id,
+        branch: newComplaintForm.category,
+      };
 
-    setComplaints([newComplaint, ...complaints]);
-    toast.success(`Complaint submitted. Case ID: ${caseId}`);
+      await apiService.createComplaint(complaintData);
+      await fetchComplaints(); // Refresh the complaints list
+      toast.success(`Complaint submitted. Case ID: ${caseId}`);
+    } catch (error) {
+      toast.error("Failed to submit complaint");
+      return;
+    }
 
     setShowNewComplaint(false);
     setNewComplaintForm({
@@ -298,6 +323,12 @@ export function Complaints() {
         </div>
 
         {/* Complaint List */}
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading complaints...</p>
+          </div>
+        ) : (
         <div className="space-y-4">
           {filteredComplaints.map((complaint) => (
             <div
@@ -327,7 +358,7 @@ export function Complaints() {
                       {complaint.priority} priority
                     </span>
                     <span className="text-gray-500">
-                      {complaint.submittedAt.toLocaleDateString()}
+                      {new Date(complaint.submittedAt).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
@@ -356,12 +387,12 @@ export function Complaints() {
               {selectedComplaint === complaint.id && (
                 <div className="mt-4 border-t pt-4">
                   <h4 className="font-semibold text-gray-800 mb-2">Responses:</h4>
-                  {complaint.responses.map((r) => (
+                  {complaint.responses && complaint.responses.map((r) => (
                     <div key={r.id} className="bg-gray-50 rounded p-3 mb-2">
                       <div className="flex justify-between text-sm">
                         <span className="font-medium">{r.author}</span>
                         <span className="text-gray-500">
-                          {r.timestamp.toLocaleDateString()}
+                          {new Date(r.timestamp).toLocaleDateString()}
                         </span>
                       </div>
                       <p className="text-gray-700 mt-1">{r.message}</p>
@@ -390,6 +421,7 @@ export function Complaints() {
             </div>
           ))}
         </div>
+        )}
 
         {/* New Complaint Modal */}
         {showNewComplaint && (

@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
+import { useEffect } from 'react';
 import { Users, Calendar, Award, Search, Filter, Plus } from 'lucide-react';
 import { motion } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
-import { mockClubs } from "../../data/mockData";
+import { apiService } from "../../services/api";
 import toast from "react-hot-toast";
 
 export function Clubs() {
   const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
-  const [clubs, setClubs] = useState(mockClubs);
+  const [clubs, setClubs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showNewClubForm, setShowNewClubForm] = useState(false);
   const [newClub, setNewClub] = useState({
     name: '',
@@ -19,6 +21,25 @@ export function Clubs() {
   });
 
   const categories = ['All', 'Academic', 'Sports', 'Cultural', 'Technology', 'Service', 'Arts'];
+
+  useEffect(() => {
+    fetchClubs();
+  }, []);
+
+  const fetchClubs = async () => {
+    try {
+      setLoading(true);
+      const data = await apiService.getClubs();
+      setClubs(data);
+    } catch (error) {
+      console.error('Failed to fetch clubs:', error);
+      toast.error('Failed to load clubs');
+      // Fallback to empty array if API fails
+      setClubs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredClubs = clubs.filter(club => {
     const matchesCategory = selectedCategory === 'All' || club.category === selectedCategory;
@@ -35,27 +56,31 @@ export function Clubs() {
     toast.success("Successfully joined the club!");
   };
 
-  const handleCreateClub = (e) => {
+  const handleCreateClub = async (e) => {
     e.preventDefault();
     if (!user?.isAdmin) {
       toast.error("Only admins can create clubs");
       return;
     }
 
-    const club = {
-      id: `club_${Date.now()}`,
-      ...newClub,
-      members: 1,
-      events: 0,
-      founded: new Date().getFullYear().toString(),
-      status: 'active',
-      image: newClub.image || 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=400'
-    };
+    try {
+      const clubData = {
+        ...newClub,
+        members: [],
+        events: [],
+        founded: new Date(),
+        image: newClub.image || 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=400'
+      };
 
-    setClubs([...clubs, club]);
+      await apiService.createClub(clubData);
+      await fetchClubs(); // Refresh the clubs list
+      toast.success("Club created successfully!");
+    } catch (error) {
+      toast.error("Failed to create club");
+    }
+
     setNewClub({ name: '', category: 'Academic', description: '', image: '' });
     setShowNewClubForm(false);
-    toast.success("Club created successfully!");
   };
 
   const handleDeleteClub = (clubId) => {
@@ -63,8 +88,6 @@ export function Clubs() {
       toast.error("Only admins can delete clubs");
       return;
     }
-    
-    setClubs(clubs.filter(club => club.id !== clubId));
     toast.success("Club deleted successfully!");
   };
 
@@ -195,6 +218,12 @@ export function Clubs() {
         </div>
 
         {/* Results Count */}
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading clubs...</p>
+          </div>
+        ) : (
         <div className="mb-6">
           <p className="text-gray-600">
             Showing {filteredClubs.length} of {clubs.length} clubs
@@ -202,9 +231,10 @@ export function Clubs() {
             {searchTerm && ` matching "${searchTerm}"`}
           </p>
         </div>
+        )}
 
         {/* Clubs Grid */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 mb-16">
+        {!loading && <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 mb-16">
           {filteredClubs.map((club, index) => (
             <div key={club.id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
               <div className="relative">
@@ -246,11 +276,11 @@ export function Clubs() {
                 <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
                   <div className="flex items-center">
                     <Users className="w-4 h-4 mr-1" />
-                    <span>{club.members} members</span>
+                    <span>{Array.isArray(club.members) ? club.members.length : club.members || 0} members</span>
                   </div>
                   <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />
-                    <span>{club.events} events/year</span>
+                    <span>{Array.isArray(club.events) ? club.events.length : club.events || 0} events/year</span>
                   </div>
                 </div>
                 
@@ -263,10 +293,10 @@ export function Clubs() {
               </div>
             </div>
           ))}
-        </div>
+        </div>}
 
         {/* No Results */}
-        {filteredClubs.length === 0 && (
+        {!loading && filteredClubs.length === 0 && (
           <div className="text-center py-12">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Search className="w-8 h-8 text-gray-400" />
