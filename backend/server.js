@@ -4,6 +4,16 @@ import dotenv from "dotenv";
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
+
+// Import routes
+import userRoutes from "./routes/userRoutes.js";
+import complaintRoutes from "./routes/complaintRoutes.js";
+import clubRoutes from "./routes/clubRoutes.js";
+import postRoutes from "./routes/postRoutes.js";
+import electionRoutes from "./routes/electionRoutes.js";
+import contactRoutes from "./routes/contactRoutes.js";
+
+// Import models
 import User from "./models/User.js";
 import Complaint from "./models/Complaint.js";
 import Club from "./models/Club.js";
@@ -17,7 +27,10 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Use CORS middleware
-app.use(cors());
+app.use(cors({
+	origin: ["http://localhost:5173", "http://localhost:3000"],
+	credentials: true
+}));
 app.use(express.json());
 console.log("MongoDB URI:", process.env.MONGODB_URI);
 
@@ -39,6 +52,19 @@ const checkMongoDBConnection = (req, res, next) => {
 
 // Use the MongoDB connection checker middleware
 app.use(checkMongoDBConnection);
+
+// Use routes
+app.use("/users", userRoutes);
+app.use("/complaints", complaintRoutes);
+app.use("/clubs", clubRoutes);
+app.use("/api/posts", postRoutes);
+app.use("/api/elections", electionRoutes);
+app.use("/api/contact", contactRoutes);
+
+// Health check endpoint
+app.get("/", (req, res) => {
+	res.json({ message: "DBU Student Union API is running!" });
+});
 
 // Endpoint to add a new user
 app.post("/users", async (req, res) => {

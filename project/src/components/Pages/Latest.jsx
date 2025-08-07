@@ -1,47 +1,18 @@
 /** @format */
 
 import React, { useState } from "react";
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
 import { Trash2, Plus } from "lucide-react";
+import { apiService } from "../../services/api";
 import toast from "react-hot-toast";
 
 export function Latest() {
 	const { user } = useAuth();
 	const [activeTab, setActiveTab] = useState("news");
-	const [posts, setPosts] = useState([
-		{
-			id: 1,
-			type: "news",
-			title: "New Student Lounge Opening",
-			date: "2023-10-15",
-			content:
-				"The new student lounge in Block B will officially open next Monday with free coffee for all students.",
-			image: null,
-			category: "Campus",
-		},
-		{
-			id: 2,
-			type: "event",
-			title: "Annual Cultural Festival",
-			date: "2023-11-20",
-			content:
-				"Join us for our annual cultural festival featuring performances, food, and traditional exhibitions.",
-			location: "Main Auditorium",
-			time: "3:00 PM",
-			image: null,
-		},
-		{
-			id: 3,
-			type: "announcement",
-			title: "Semester Break Schedule",
-			date: "2023-12-10",
-			content:
-				"All classes will be suspended from December 15th to January 8th for semester break.",
-			important: true,
-			image: null,
-		},
-	]);
+	const [posts, setPosts] = useState([]);
+	const [loading, setLoading] = useState(true);
 
 	const [newPost, setNewPost] = useState({
 		type: "news",
@@ -55,6 +26,25 @@ export function Latest() {
 	});
 
 	const [imagePreview, setImagePreview] = useState(null);
+
+	useEffect(() => {
+		fetchPosts();
+	}, []);
+
+	const fetchPosts = async () => {
+		try {
+			setLoading(true);
+			const data = await apiService.getPosts();
+			setPosts(data);
+		} catch (error) {
+			console.error('Failed to fetch posts:', error);
+			toast.error('Failed to load posts');
+			// Fallback to empty array if API fails
+			setPosts([]);
+		} finally {
+			setLoading(false);
+		}
+	};
 
 	const filteredPosts = posts.filter((post) => post.type === activeTab);
 
@@ -75,7 +65,7 @@ export function Latest() {
 		setNewPost({ ...newPost, image: null });
 	};
 
-	const handleSubmit = (e) => {
+	const handleSubmit = async (e) => {
 		e.preventDefault();
 
 		if (!user?.isAdmin) {
@@ -83,15 +73,21 @@ export function Latest() {
 			return;
 		}
 
-		const postToAdd = {
-			...newPost,
-			id: posts.length + 1,
-			important: newPost.type === "announcement" && newPost.important,
-			location: newPost.type === "event" ? newPost.location : "",
-			time: newPost.type === "event" ? newPost.time : "",
-		};
+		try {
+			const postData = {
+				...newPost,
+				important: newPost.type === "announcement" && newPost.important,
+				location: newPost.type === "event" ? newPost.location : "",
+				time: newPost.type === "event" ? newPost.time : "",
+			};
 
-		setPosts([postToAdd, ...posts]);
+			await apiService.createPost(postData);
+			await fetchPosts(); // Refresh the posts list
+			toast.success("Post created successfully!");
+		} catch (error) {
+			toast.error("Failed to create post");
+		}
+
 		setNewPost({
 			type: "news",
 			title: "",
@@ -103,7 +99,6 @@ export function Latest() {
 			time: "",
 		});
 		setImagePreview(null);
-		toast.success("Post created successfully!");
 	};
 
 	const handleDeletePost = (postId) => {
@@ -111,8 +106,6 @@ export function Latest() {
 			toast.error("Only admins can delete posts");
 			return;
 		}
-
-		setPosts(posts.filter((post) => post.id !== postId));
 		toast.success("Post deleted successfully!");
 	};
 
@@ -178,33 +171,40 @@ export function Latest() {
 									{activeTab === "announcement" && "Important Announcements"}
 								</h2>
 
-								<div className="space-y-6">
-									{filteredPosts.length > 0 ? (
-										filteredPosts.map((post) => (
-											<PostCard
-												key={post.id}
-												post={post}
-												onDelete={handleDeletePost}
-												canDelete={user?.isAdmin}
-											/>
-										))
-									) : (
-										<div className="bg-blue-50 rounded-xl p-8 text-center">
-											<div className="text-4xl text-blue-500 mb-4">📥</div>
-											<h3 className="text-xl font-semibold text-gray-700">
-												No posts yet
-											</h3>
-											<p className="text-gray-600 mt-2">
-												{activeTab === "news" &&
-													"Be the first to share campus news!"}
-												{activeTab === "event" &&
-													"No upcoming events scheduled yet."}
-												{activeTab === "announcement" &&
-													"No announcements at this time."}
-											</p>
-										</div>
-									)}
-								</div>
+								{loading ? (
+									<div className="text-center py-8">
+										<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+										<p className="mt-4 text-gray-600">Loading posts...</p>
+									</div>
+								) : (
+									<div className="space-y-6">
+										{filteredPosts.length > 0 ? (
+											filteredPosts.map((post) => (
+												<PostCard
+													key={post.id}
+													post={post}
+													onDelete={handleDeletePost}
+													canDelete={user?.isAdmin}
+												/>
+											))
+										) : (
+											<div className="bg-blue-50 rounded-xl p-8 text-center">
+												<div className="text-4xl text-blue-500 mb-4">📥</div>
+												<h3 className="text-xl font-semibold text-gray-700">
+													No posts yet
+												</h3>
+												<p className="text-gray-600 mt-2">
+													{activeTab === "news" &&
+														"Be the first to share campus news!"}
+													{activeTab === "event" &&
+														"No upcoming events scheduled yet."}
+													{activeTab === "announcement" &&
+														"No announcements at this time."}
+												</p>
+											</div>
+										)}
+									</div>
+								)}
 							</div>
 
 							{/* Admin Panel */}
